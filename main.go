@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -46,12 +47,27 @@ const (
 	gif = ".gif"
 )
 
+type stylefile struct {
+	icon   string
+	color  string
+	symbol string
+}
+
+var mapStyleByfileType = map[int]stylefile{
+	fileRegular:    {icon: "documento"},
+	fileDirectory:  {icon: "carpeta", color: "blue", symbol: "/"},
+	fileExecutable: {icon: "Exe", color: "GREEN", symbol: "*"},
+	fileCompress:   {icon: "Compress", color: "RED"},
+	fileImage:      {icon: "Image", color: "MAGENTA"},
+	fileLink:       {icon: "link", color: "CYAN"},
+}
+
 func main() {
 
 	//filter patter
-	//flagPatter := flag.String("p", "", "filter by pattern")
+	flagPatter := flag.String("p", "", "filter by pattern")
 	//flaAll := flag.Bool("a", false, "all files including hide files")
-	//flagNumberRecords := flag.Int("n", 0, "number of records")
+	flagNumberRecords := flag.Int("n", 0, "number of records")
 
 	//order flags
 	//hasOrderByTime := flag.Bool("t", false, "sort by time, oldest first")
@@ -76,22 +92,35 @@ func main() {
 	for _, dir := range dirs {
 		f, err := getFile(dir, false)
 		if err != nil {
-			fmt.Println("Error final", err)
+			panic(err)
 		}
-		//
-		////add file sliceFile
+		isMatched, err := regexp.MatchString("(?i)"+*flagPatter, f.name)
+		if err != nil {
+			panic(err)
+		}
+
+		if !isMatched {
+			continue
+		}
+
+		//add file sliceFile
 		fs = append(fs, f)
 	}
 
-	printList(fs)
+	if *flagNumberRecords == 0 || *flagNumberRecords > len(fs) {
+		*flagNumberRecords = len(fs)
+	}
+	printList(fs, *flagNumberRecords)
 
 	//fmt.Println("Error final", fs)
 
 }
 
-func printList(fs []file) {
-	for _, fl := range fs {
-		fmt.Printf("%s %s %s %10d %s\n", fl.mode, fl.userName, fl.groupName, fl.size, fl.modificationTime.Format("2006-01-02 15:04:05"))
+func printList(fs []file, nRecord int) {
+	for _, fl := range fs[:nRecord] {
+		style, _ := mapStyleByfileType[fl.fileType]
+		fmt.Printf("%s %s %s %10d %s %s %s %s\n", fl.mode, fl.userName, fl.groupName, fl.size,
+			fl.modificationTime.Format("2006-01-02 15:04:05"), style.icon, fl.name, style.symbol)
 	}
 }
 
