@@ -3,8 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/AJRDRGZ/fileinfo"
+	"github.com/fatih/color"
+	"golang.org/x/exp/constraints"
 	"io/fs"
 	"os"
+	"path"
 	"regexp"
 	"runtime"
 	"sort"
@@ -50,18 +54,26 @@ const (
 
 type stylefile struct {
 	icon   string
-	color  string
+	color  color.Attribute
 	symbol string
 }
 
 var mapStyleByfileType = map[int]stylefile{
-	fileRegular:    {icon: "documento"},
-	fileDirectory:  {icon: "carpeta", color: "blue", symbol: "/"},
-	fileExecutable: {icon: "Exe", color: "GREEN", symbol: "*"},
-	fileCompress:   {icon: "Compress", color: "RED"},
-	fileImage:      {icon: "Image", color: "MAGENTA"},
-	fileLink:       {icon: "link", color: "CYAN"},
+	fileRegular:    {icon: "documento", color: color.FgMagenta},
+	fileDirectory:  {icon: "carpeta", color: color.FgYellow, symbol: "/"},
+	fileExecutable: {icon: "Exe", color: color.FgRed, symbol: "*"},
+	fileCompress:   {icon: "Compress", color: color.FgMagenta},
+	fileImage:      {icon: "Image", color: color.FgCyan},
+	fileLink:       {icon: "link", color: color.FgGreen},
 }
+
+var (
+	yellow  = color.New(color.FgYellow).SprintFunc()
+	red     = color.New(color.FgRed).SprintFunc()
+	magenta = color.New(color.FgMagenta).SprintFunc()
+	cyan    = color.New(color.FgCyan).SprintFunc()
+	green   = color.New(color.FgGreen).SprintFunc()
+)
 
 func main() {
 
@@ -164,7 +176,7 @@ func orderByName(files []file, isReverse bool) {
 	})
 }
 
-func mySort[T int64 | string](i, j T, isReverse bool) bool {
+func mySort[T constraints.Ordered](i, j T, isReverse bool) bool {
 	if isReverse {
 		return i > j
 	}
@@ -175,15 +187,23 @@ func mySort[T int64 | string](i, j T, isReverse bool) bool {
 func printList(fs []file, nRecord int) {
 	for _, fl := range fs[:nRecord] {
 		style, _ := mapStyleByfileType[fl.fileType]
-		fmt.Printf("%s %s %s %10d %s %s %s %s\n", fl.mode, fl.userName, fl.groupName, fl.size,
-			fl.modificationTime.Format("2006-01-02 15:04:05"), style.icon, fl.name, style.symbol)
+		fmt.Printf("%s %s %s %10d %s %s %s %s %s\n", fl.mode, fl.userName, fl.groupName, fl.size,
+			fl.modificationTime.Format("2006-01-02 15:04:05"), style.icon, setColor(fl.name, style.color), fl.name, style.symbol)
 	}
 }
 
 func getFile(dir fs.DirEntry, isHidden bool) (file, error) {
+	var (
+		userName, groupName string
+	)
+
 	info, err := dir.Info()
 	if err != nil {
 		return file{}, err
+	}
+
+	if userName, groupName = fileinfo.GetUserAndGroup(info.Sys()); userName == "" || groupName == "" {
+		userName, groupName = "Icenteno", "TDA"
 	}
 
 	f := file{
@@ -193,8 +213,8 @@ func getFile(dir fs.DirEntry, isHidden bool) (file, error) {
 		size:             info.Size(),
 		mode:             info.Mode().String(),
 		modificationTime: info.ModTime(),
-		userName:         "Icenteno",
-		groupName:        "TDA",
+		userName:         userName,
+		groupName:        groupName,
 	}
 	//mt.Println(f)
 	setFile(&f)
@@ -215,6 +235,23 @@ func setFile(f *file) {
 	default:
 		f.fileType = fileRegular
 	}
+
+}
+
+func setColor(nameFile string, styleColor color.Attribute) string {
+	switch styleColor {
+	case color.FgYellow:
+		return yellow(nameFile)
+	case color.FgGreen:
+		return green(nameFile)
+	case color.FgRed:
+		return red(nameFile)
+	case color.FgMagenta:
+		return magenta(nameFile)
+	case color.FgCyan:
+		return cyan(nameFile)
+	}
+	return nameFile
 
 }
 
@@ -245,5 +282,11 @@ func isImage(f file) bool {
 }
 
 func isHidden(fileName string, basePath string) bool {
-	return strings.HasPrefix(fileName, ".")
+	filePath := fileName
+
+	if runtime.GOOS == Windows {
+		filePath = path.Join(basePath, fileName)
+	}
+
+	return fileinfo.IsHidden(filePath)
 }
